@@ -64,6 +64,10 @@ tell application "System Events"
 end tell
 return output`;
 
+// osascript reports a denied automation prompt as errAEEventNotPermitted (-1743).
+const PERMISSION_DENIED = /-1743|not authoriz|not authoris/i;
+const isPermissionError = (err) => PERMISSION_DENIED.test(String((err && err.message) || err));
+
 const iconCache = new Map();
 
 async function iconFor(appPath) {
@@ -221,9 +225,13 @@ function createTray() {
 // --- IPC -------------------------------------------------------------------
 ipcMain.handle('apps:list', async () => {
   try {
-    return { apps: await listApps(), error: null };
+    return { apps: await listApps(), error: null, needsPermission: false };
   } catch (err) {
-    return { apps: [], error: String(err.message || err) };
+    return {
+      apps: [],
+      error: String(err.message || err),
+      needsPermission: isPermissionError(err),
+    };
   }
 });
 
@@ -233,7 +241,13 @@ ipcMain.handle('apps:quitAll', async () => {
     if (win && win.isVisible()) win.hide();
     return { ...result, error: null };
   } catch (err) {
-    return { quit: 0, kept: 0, stuck: [], error: String(err.message || err) };
+    return {
+      quit: 0,
+      kept: 0,
+      stuck: [],
+      error: String(err.message || err),
+      needsPermission: isPermissionError(err),
+    };
   }
 });
 
@@ -251,6 +265,17 @@ ipcMain.handle('settings:set', (_event, patch) => {
   settings = { ...settings, ...patch };
   saveSettings();
   return settings;
+});
+
+// Deep link straight to System Settings > Privacy & Security > Automation.
+ipcMain.on('system:openAutomationSettings', () => {
+  shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Automation');
+});
+
+// macOS only hands an app its new automation permission after a relaunch.
+ipcMain.on('app:relaunch', () => {
+  app.relaunch();
+  app.exit(0);
 });
 
 ipcMain.on('window:hide', () => win && win.hide());

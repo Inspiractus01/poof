@@ -3,6 +3,7 @@ const quitAllButton = document.getElementById('quit-all');
 const quitCount = document.getElementById('quit-count');
 const status = document.getElementById('status');
 const errorBox = document.getElementById('error');
+const permissionPanel = document.getElementById('permission');
 const settingsPanel = document.getElementById('settings');
 const forceQuitInput = document.getElementById('force-quit');
 
@@ -15,6 +16,19 @@ function setStatus(text) {
 function showError(message) {
   errorBox.hidden = !message;
   errorBox.textContent = message || '';
+}
+
+// Missing automation permission is the one error worth a fix-it button rather
+// than an error string -- macOS can deep link straight to the right pane.
+function showPermissionPrompt(needed) {
+  permissionPanel.hidden = !needed;
+  list.hidden = needed;
+  quitAllButton.hidden = needed;
+  document.querySelector('.hint').hidden = needed;
+  if (needed) {
+    showError('');
+    setStatus('');
+  }
 }
 
 function render() {
@@ -70,7 +84,9 @@ function render() {
 
 async function refresh() {
   const result = await window.poof.listApps();
-  showError(result.error ? `Can't read running apps. Allow Poof under System Settings > Privacy & Security > Automation. (${result.error})` : '');
+  showPermissionPrompt(Boolean(result.needsPermission));
+  if (result.needsPermission) return;
+  showError(result.error ? `Can't read running apps: ${result.error}` : '');
   apps = result.apps;
   render();
 }
@@ -79,10 +95,18 @@ quitAllButton.addEventListener('click', async () => {
   quitAllButton.disabled = true;
   setStatus('Quitting...');
   const result = await window.poof.quitAll();
-  if (result.error) showError(result.error);
+  if (result.needsPermission) showPermissionPrompt(true);
+  else if (result.error) showError(result.error);
   else if (result.stuck.length) setStatus(`Still open: ${result.stuck.join(', ')}`);
   await refresh();
 });
+
+document.getElementById('open-settings').addEventListener('click', () => {
+  window.poof.openAutomationSettings();
+});
+
+document.getElementById('retry').addEventListener('click', refresh);
+document.getElementById('relaunch').addEventListener('click', () => window.poof.relaunch());
 
 document.getElementById('settings-toggle').addEventListener('click', () => {
   settingsPanel.hidden = !settingsPanel.hidden;

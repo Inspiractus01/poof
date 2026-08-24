@@ -15,8 +15,10 @@ The build is not code-signed, so the first launch needs:
 1. Right-click **Poof.app** → **Open** → **Open**, or
 2. `xattr -dr com.apple.quarantine /Applications/Poof.app`
 
-On first quit macOS asks for permission to control other apps. Allow it, or turn it on later
-under **System Settings → Privacy & Security → Automation → Poof**.
+On first use macOS asks for permission to control other apps. If it is missing or denied, the
+popover shows an **Open Automation settings** button that deep links straight to
+**System Settings → Privacy & Security → Automation**. Turn on **System Events** under Poof,
+then hit **Relaunch Poof** — macOS only hands over the new permission after a restart.
 
 ## Develop
 

@@ -22,6 +22,16 @@
 
     <p class="hint">Click the pin to keep an app running.</p>
 
+    <div id="permission" class="permission" hidden>
+      <p class="permission-title">Poof needs permission to control your apps</p>
+      <p class="permission-body">Turn on <strong>System Events</strong> under Poof in Automation, then relaunch.</p>
+      <button id="open-settings" class="primary">Open Automation settings</button>
+      <div class="permission-actions">
+        <button id="retry" class="ghost">Try again</button>
+        <button id="relaunch" class="ghost">Relaunch Poof</button>
+      </div>
+    </div>
+
     <div id="error" class="error" hidden></div>
 
     <ul id="apps" class="apps"></ul>
