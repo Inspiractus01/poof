@@ -1,0 +1,7 @@
+node_modules/
+dist/
+build/icon.png
+build/icon.icns
+build/trayTemplate.png
+build/trayTemplate@2x.png
+.DS_Store

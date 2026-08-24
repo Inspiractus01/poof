@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'self'; script-src 'self';" />
+    <title>Poof</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <div class="title">
+        <span class="mark"></span>
+        <h1>Poof</h1>
+      </div>
+      <button id="settings-toggle" class="ghost" title="Settings">&#9881;</button>
+    </header>
+
+    <button id="quit-all" class="primary">
+      <span class="label">Quit all apps</span>
+      <span class="count" id="quit-count"></span>
+    </button>
+
+    <p class="hint">Click the pin to keep an app running.</p>
+
+    <div id="error" class="error" hidden></div>
+
+    <ul id="apps" class="apps"></ul>
+
+    <section id="settings" class="settings" hidden>
+      <label class="row">
+        <input type="checkbox" id="force-quit" />
+        <span>
+          Force quit if an app won't close
+          <small>Skips "save changes?" dialogs. Unsaved work is lost.</small>
+        </span>
+      </label>
+    </section>
+
+    <footer>
+      <span id="status">&nbsp;</span>
+      <button id="quit-self" class="ghost">Quit Poof</button>
+    </footer>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>

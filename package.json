@@ -1,0 +1,59 @@
+{
+  "name": "poof",
+  "productName": "Poof",
+  "version": "1.0.1",
+  "description": "One click, all your apps are gone. Except the ones you keep.",
+  "main": "src/main.js",
+  "author": "Inspiractus01",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "icons": "node scripts/gen-icons.js",
+    "start": "npm run icons && electron .",
+    "dist": "npm run icons && electron-builder --mac"
+  },
+  "build": {
+    "appId": "com.inspiractus.poof",
+    "productName": "Poof",
+    "files": [
+      "src/**/*",
+      "build/tray*.png",
+      "package.json",
+      "!dist/**"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "category": "public.app-category.utilities",
+      "icon": "build/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "identity": null,
+      "extendInfo": {
+        "LSUIElement": true,
+        "NSAppleEventsUsageDescription": "Poof needs to control other apps in order to quit them."
+      }
+    },
+    "dmg": {
+      "writeUpdateInfo": false
+    },
+    "afterPack": "scripts/adhoc-sign.js"
+  },
+  "devDependencies": {
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3"
+  }
+}
