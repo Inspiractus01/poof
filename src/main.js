@@ -1,152 +1,52 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, shell } = require('electron');
+const { app, BrowserWindow, Tray, Menu, Notification, ipcMain, nativeImage, screen, shell } = require('electron');
 const path = require('path');
-const fs = require('fs');
-const { execFile } = require('child_process');
 
-const SELF_BUNDLE_ID = 'com.inspiractus.poof';
-// Finder relaunches itself instantly, so listing it would only be noise.
-const ALWAYS_SKIP = new Set([SELF_BUNDLE_ID, 'com.apple.finder', 'Finder', 'Poof', 'Electron']);
+const { Settings } = require('./lib/settings');
+const { AppIcons } = require('./lib/appicons');
+const { listApps, quitApps, isPermissionError } = require('./lib/apps');
+const { UsageTracker } = require('./lib/usage');
+const { Updater } = require('./lib/updater');
 
-const WINDOW_WIDTH = 320;
-const WINDOW_HEIGHT = 460;
+const WINDOW_WIDTH = 332;
+const WINDOW_HEIGHT = 496;
 
 let tray = null;
 let win = null;
-let settings = { keep: [], forceQuit: false, quitDelay: 4 };
+let settings = null;
+let icons = null;
+let tracker = null;
+let updater = null;
+let busy = false;
 
-// --- settings --------------------------------------------------------------
-const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
+// --- data ------------------------------------------------------------------
+async function collect() {
+  const apps = await icons.decorate(await listApps());
+  const keep = settings.get('keep');
+  const rules = settings.get('rules');
+  const lastUsed = settings.get('lastUsed');
 
-function loadSettings() {
-  try {
-    const raw = JSON.parse(fs.readFileSync(settingsFile(), 'utf8'));
-    settings = { ...settings, ...raw, keep: Array.isArray(raw.keep) ? raw.keep : [] };
-  } catch {
-    // first run, or a settings file we can't read -- defaults are fine
-  }
-}
-
-function saveSettings() {
-  try {
-    fs.mkdirSync(app.getPath('userData'), { recursive: true });
-    fs.writeFileSync(settingsFile(), JSON.stringify(settings, null, 2));
-  } catch (err) {
-    console.error('could not save settings:', err);
-  }
-}
-
-// --- AppleScript -----------------------------------------------------------
-function osascript(script, timeoutMs = 15000) {
-  return new Promise((resolve, reject) => {
-    execFile('/usr/bin/osascript', ['-e', script], { timeout: timeoutMs }, (err, stdout, stderr) => {
-      if (err) reject(new Error(stderr.trim() || err.message));
-      else resolve(stdout);
-    });
+  return apps.map((entry) => {
+    const hours = Number(rules[entry.id]) || 0;
+    const idleMs = lastUsed[entry.id] ? Date.now() - lastUsed[entry.id] : 0;
+    return {
+      ...entry,
+      keep: keep.includes(entry.id),
+      hours,
+      idleMs,
+      // How far this app has drifted toward its own deadline, 0..1.
+      progress: hours ? Math.min(1, idleMs / (hours * 3600 * 1000)) : 0,
+    };
   });
 }
 
-const LIST_SCRIPT = `
-tell application "System Events"
-  set output to ""
-  repeat with p in (every process whose background only is false)
-    set appName to name of p
-    set bundleId to ""
-    set appPath to ""
-    set appPid to unix id of p
-    try
-      set bundleId to bundle identifier of p
-    end try
-    try
-      set appPath to POSIX path of (file of p as alias)
-    end try
-    set output to output & appName & tab & bundleId & tab & appPath & tab & appPid & linefeed
-  end repeat
-end tell
-return output`;
-
-// osascript reports a denied automation prompt as errAEEventNotPermitted (-1743).
-const PERMISSION_DENIED = /-1743|not authoriz|not authoris/i;
-const isPermissionError = (err) => PERMISSION_DENIED.test(String((err && err.message) || err));
-
-const iconCache = new Map();
-
-async function iconFor(appPath) {
-  if (!appPath) return null;
-  if (iconCache.has(appPath)) return iconCache.get(appPath);
-  let dataUrl = null;
-  try {
-    const image = await app.getFileIcon(appPath, { size: 'normal' });
-    dataUrl = image.isEmpty() ? null : image.resize({ width: 32, height: 32 }).toDataURL();
-  } catch {
-    dataUrl = null;
-  }
-  iconCache.set(appPath, dataUrl);
-  return dataUrl;
-}
-
-async function listApps() {
-  const stdout = await osascript(LIST_SCRIPT);
-  const apps = [];
-  for (const line of stdout.split('\n')) {
-    if (!line.trim()) continue;
-    const [name, bundleId, appPath, pid] = line.split('\t');
-    if (!name) continue;
-    if (ALWAYS_SKIP.has(bundleId) || ALWAYS_SKIP.has(name)) continue;
-    apps.push({
-      name,
-      bundleId: bundleId || '',
-      path: appPath || '',
-      pid: Number(pid) || 0,
-      id: bundleId || name,
-      icon: await iconFor(appPath),
-    });
-  }
-  apps.sort((a, b) => a.name.localeCompare(b.name));
-  return apps.map((a) => ({ ...a, keep: settings.keep.includes(a.id) }));
-}
-
-function quitTarget(target) {
-  // `tell application id` is the reliable form; fall back to the name for the
-  // handful of processes that report no bundle identifier.
-  const ref = target.bundleId ? `application id "${target.bundleId}"` : `application "${target.name}"`;
-  return osascript(`with timeout of ${settings.quitDelay} seconds\ntell ${ref} to quit\nend timeout`,
-    (settings.quitDelay + 2) * 1000);
-}
-
-const isRunning = (pid) => {
-  if (!pid || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
 async function quitAll() {
-  const apps = await listApps();
+  const apps = await collect();
   const targets = apps.filter((a) => !a.keep);
-  const kept = apps.length - targets.length;
-
-  await Promise.all(targets.map((t) => quitTarget(t).catch(() => {})));
-
-  // Apps with an unsaved-changes dialog stay up. Only kill them when asked to.
-  const stubborn = targets.filter((t) => t.pid > 0 && isRunning(t.pid));
-  if (settings.forceQuit) {
-    for (const t of stubborn) {
-      try {
-        if (t.pid > 0) process.kill(t.pid, 'SIGKILL');
-      } catch {
-        // already gone, or not ours to kill
-      }
-    }
-    return { quit: targets.length, kept, stuck: [] };
-  }
-
-  return { quit: targets.length - stubborn.length, kept, stuck: stubborn.map((t) => t.name) };
+  const result = await quitApps(targets, { force: settings.get('forceQuit') });
+  return { ...result, kept: apps.length - targets.length };
 }
 
-// --- popover window --------------------------------------------------------
+// --- popover ---------------------------------------------------------------
 function createWindow() {
   win = new BrowserWindow({
     width: WINDOW_WIDTH,
@@ -159,8 +59,9 @@ function createWindow() {
     skipTaskbar: true,
     transparent: true,
     hasShadow: true,
-    vibrancy: 'popover',
+    vibrancy: 'under-window',
     visualEffectState: 'active',
+    backgroundColor: '#00000000',
     roundedCorners: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -170,10 +71,14 @@ function createWindow() {
   });
 
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  win.on('blur', () => win.hide());
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
-  // External links (there are none today, but never open one in the popover)
+  // Keep the popover up while work is in flight -- the macOS permission dialog
+  // steals focus, and hiding on blur would throw the answer away.
+  win.on('blur', () => {
+    if (!busy) win.hide();
+  });
+
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
@@ -182,14 +87,11 @@ function createWindow() {
 
 function positionWindow() {
   const trayBounds = tray.getBounds();
-  const display = screen.getDisplayNearestPoint({ x: trayBounds.x, y: trayBounds.y });
-  const area = display.workArea;
+  const area = screen.getDisplayNearestPoint({ x: trayBounds.x, y: trayBounds.y }).workArea;
 
   let x = Math.round(trayBounds.x + trayBounds.width / 2 - WINDOW_WIDTH / 2);
   x = Math.max(area.x + 8, Math.min(x, area.x + area.width - WINDOW_WIDTH - 8));
-  const y = Math.round(trayBounds.y + trayBounds.height + 4);
-
-  win.setPosition(x, y, false);
+  win.setPosition(x, Math.round(trayBounds.y + trayBounds.height + 4), false);
 }
 
 function toggleWindow() {
@@ -203,68 +105,86 @@ function toggleWindow() {
   win.webContents.send('window:shown');
 }
 
-function trayImage() {
+function createTray() {
   const image = nativeImage.createFromPath(path.join(__dirname, '..', 'build', 'trayTemplate.png'));
   image.setTemplateImage(true);
-  return image;
-}
 
-function createTray() {
-  tray = new Tray(trayImage());
-  tray.setToolTip('Poof - quit all apps');
+  tray = new Tray(image);
+  tray.setToolTip('Poof');
   tray.on('click', toggleWindow);
   tray.on('right-click', () => {
     tray.popUpContextMenu(Menu.buildFromTemplate([
       { label: 'Open Poof', click: toggleWindow },
+      { type: 'separator' },
+      { label: `Version ${app.getVersion()}`, enabled: false },
+      { label: 'Check for updates', click: () => updater.check() },
       { type: 'separator' },
       { label: 'Quit Poof', click: () => app.quit() },
     ]));
   });
 }
 
+function notify(title, body) {
+  if (!Notification.isSupported()) return;
+  new Notification({ title, body, silent: true }).show();
+}
+
 // --- IPC -------------------------------------------------------------------
 ipcMain.handle('apps:list', async () => {
+  busy = true;
   try {
-    return { apps: await listApps(), error: null, needsPermission: false };
+    return { apps: await collect(), error: null, needsPermission: false };
   } catch (err) {
-    return {
-      apps: [],
-      error: String(err.message || err),
-      needsPermission: isPermissionError(err),
-    };
+    return { apps: [], error: String(err.message || err), needsPermission: isPermissionError(err) };
+  } finally {
+    busy = false;
   }
 });
 
 ipcMain.handle('apps:quitAll', async () => {
+  busy = true;
   try {
     const result = await quitAll();
-    if (win && win.isVisible()) win.hide();
-    return { ...result, error: null };
+    const failure = result.errors.find((e) => isPermissionError(e));
+    return { ...result, error: null, needsPermission: Boolean(failure) };
   } catch (err) {
     return {
-      quit: 0,
-      kept: 0,
-      stuck: [],
+      quit: 0, kept: 0, stuck: [], errors: [],
       error: String(err.message || err),
       needsPermission: isPermissionError(err),
     };
+  } finally {
+    busy = false;
   }
 });
 
 ipcMain.handle('keep:toggle', (_event, id) => {
-  settings.keep = settings.keep.includes(id)
-    ? settings.keep.filter((k) => k !== id)
-    : [...settings.keep, id];
-  saveSettings();
-  return settings.keep;
+  const keep = settings.get('keep');
+  const next = keep.includes(id) ? keep.filter((k) => k !== id) : [...keep, id];
+  settings.set({ keep: next });
+  return next;
 });
 
-ipcMain.handle('settings:get', () => settings);
+ipcMain.handle('rule:set', (_event, id, hours) => {
+  const rules = { ...settings.get('rules') };
+  if (hours) rules[id] = hours;
+  else delete rules[id];
+  settings.set({ rules });
+  return rules;
+});
 
-ipcMain.handle('settings:set', (_event, patch) => {
-  settings = { ...settings, ...patch };
-  saveSettings();
-  return settings;
+ipcMain.handle('settings:get', () => ({ ...settings.values, version: app.getVersion() }));
+ipcMain.handle('settings:set', (_event, patch) => settings.set(patch));
+
+ipcMain.handle('update:check', () => updater.check());
+ipcMain.handle('update:state', () => updater.state);
+ipcMain.handle('update:install', async () => {
+  try {
+    await updater.install();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err.message || err) };
+  }
 });
 
 // Deep link straight to System Settings > Privacy & Security > Automation.
@@ -272,7 +192,6 @@ ipcMain.on('system:openAutomationSettings', () => {
   shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Automation');
 });
 
-// macOS only hands an app its new automation permission after a relaunch.
 ipcMain.on('app:relaunch', () => {
   app.relaunch();
   app.exit(0);
@@ -282,18 +201,65 @@ ipcMain.on('window:hide', () => win && win.hide());
 ipcMain.on('app:quit', () => app.quit());
 
 // --- lifecycle -------------------------------------------------------------
-if (!app.requestSingleInstanceLock()) {
+// `Poof.app/Contents/MacOS/Poof --probe` prints what the app sees, with timings.
+async function probe() {
+  const started = Date.now();
+  try {
+    const apps = await collect();
+    console.log(JSON.stringify({
+      ms: Date.now() - started,
+      count: apps.length,
+      apps: apps.map((a) => ({ name: a.name, icon: Boolean(a.icon), hours: a.hours, keep: a.keep })),
+    }, null, 2));
+  } catch (err) {
+    console.log(JSON.stringify({
+      ms: Date.now() - started,
+      error: String(err.message || err),
+      needsPermission: isPermissionError(err),
+    }, null, 2));
+  }
+  app.exit(0);
+}
+
+function boot() {
+  settings = new Settings(app.getPath('userData'));
+  icons = new AppIcons(path.join(app.getPath('userData'), 'icons'));
+}
+
+if (process.argv.includes('--probe')) {
+  app.whenReady().then(() => {
+    boot();
+    probe();
+  });
+} else if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => win && toggleWindow());
 
   app.whenReady().then(() => {
-    if (app.dock) app.dock.hide(); // menu bar only, no dock icon
-    loadSettings();
+    if (app.dock) app.dock.hide(); // menu bar only
+    boot();
+
+    tracker = new UsageTracker({
+      settings,
+      onAutoQuit: (closed) => {
+        const names = closed.map((a) => a.name).join(', ');
+        notify('Poof', closed.length === 1 ? `${names} sat unused, so Poof closed it.` : `Closed after sitting unused: ${names}`);
+        if (win && win.isVisible()) win.webContents.send('window:shown');
+      },
+    });
+
+    updater = new Updater({
+      app,
+      onState: (state) => win && win.webContents.send('update:state', state),
+    });
+
     createWindow();
     createTray();
+    tracker.start();
+    if (settings.get('autoUpdate')) updater.startPeriodicChecks();
   });
 
-  // No windows to reopen -- the tray is the whole app.
-  app.on('window-all-closed', (e) => e.preventDefault());
+  app.on('before-quit', () => settings && settings.save({ immediate: true }));
+  app.on('window-all-closed', (event) => event.preventDefault());
 }

@@ -8,27 +8,40 @@
   </head>
   <body>
     <header>
-      <div class="title">
-        <span class="mark"></span>
-        <h1>Poof</h1>
-      </div>
-      <button id="settings-toggle" class="ghost" title="Settings">&#9881;</button>
+      <span class="brand">
+        <svg class="mark" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M4.7 6.2a4.6 4.6 0 1 0 6.6 0" />
+          <path d="M8 4.4v3.4" />
+          <circle cx="8.9" cy="2.4" r="0.85" />
+          <circle cx="10.6" cy="0.7" r="0.5" />
+        </svg>
+        <span class="wordmark">Poof</span>
+      </span>
+      <button id="settings-toggle" class="icon-button" title="Settings" aria-label="Settings">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="8" cy="8" r="2.1" />
+          <path d="M8 1.4v1.9M8 12.7v1.9M14.6 8h-1.9M3.3 8H1.4M12.7 3.3l-1.35 1.35M4.65 11.35 3.3 12.7M12.7 12.7l-1.35-1.35M4.65 4.65 3.3 3.3" />
+        </svg>
+      </button>
     </header>
 
-    <button id="quit-all" class="primary">
-      <span class="label">Quit all apps</span>
-      <span class="count" id="quit-count"></span>
+    <div id="update" class="banner" hidden>
+      <span id="update-text" class="banner-text"></span>
+      <button id="update-action" class="banner-action">Install</button>
+    </div>
+
+    <button id="quit-all" class="quit">
+      <span>Quit all apps</span>
+      <span class="tally" id="quit-count"></span>
     </button>
 
-    <p class="hint">Click the pin to keep an app running.</p>
-
-    <div id="permission" class="permission" hidden>
-      <p class="permission-title">Poof needs permission to control your apps</p>
-      <p class="permission-body">Turn on <strong>System Events</strong> under Poof in Automation, then relaunch.</p>
-      <button id="open-settings" class="primary">Open Automation settings</button>
-      <div class="permission-actions">
-        <button id="retry" class="ghost">Try again</button>
-        <button id="relaunch" class="ghost">Relaunch Poof</button>
+    <div id="permission" class="notice" hidden>
+      <p class="notice-title">Poof can't quit apps yet</p>
+      <p class="notice-body">macOS needs your say-so. Turn on <strong>System Events</strong> under Poof, then relaunch.</p>
+      <button id="open-settings" class="quit">Open Automation settings</button>
+      <div class="notice-actions">
+        <button id="retry" class="link">Try again</button>
+        <button id="relaunch" class="link">Relaunch Poof</button>
       </div>
     </div>
 
@@ -37,18 +50,29 @@
     <ul id="apps" class="apps"></ul>
 
     <section id="settings" class="settings" hidden>
-      <label class="row">
+      <label class="switch">
         <input type="checkbox" id="force-quit" />
-        <span>
-          Force quit if an app won't close
-          <small>Skips "save changes?" dialogs. Unsaved work is lost.</small>
+        <span class="switch-text">
+          Force quit stubborn apps
+          <small>Skips unsaved-changes dialogs. Work in progress is lost.</small>
         </span>
       </label>
+      <label class="switch">
+        <input type="checkbox" id="auto-update" />
+        <span class="switch-text">
+          Update itself automatically
+          <small>Checks GitHub every 6 hours.</small>
+        </span>
+      </label>
+      <div class="notice-actions">
+        <button id="check-update" class="link">Check for updates</button>
+        <button id="quit-self" class="link">Quit Poof</button>
+      </div>
     </section>
 
     <footer>
-      <span id="status">&nbsp;</span>
-      <button id="quit-self" class="ghost">Quit Poof</button>
+      <span id="status" class="mono"></span>
+      <span id="version" class="mono dim"></span>
     </footer>
 
     <script src="renderer.js"></script>

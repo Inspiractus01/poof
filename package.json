@@ -1,8 +1,8 @@
 {
   "name": "poof",
   "productName": "Poof",
-  "version": "1.0.2",
-  "description": "One click, all your apps are gone. Except the ones you keep.",
+  "version": "1.1.0",
+  "description": "One click, all your apps are gone - except the ones you keep.",
   "main": "src/main.js",
   "author": "Inspiractus01",
   "license": "MIT",
