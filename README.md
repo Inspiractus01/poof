@@ -9,8 +9,8 @@ No dock icon, no window — just the mark in the menu bar and a popover under it
 
 - **Quit all apps** — one button, every unlocked app closes.
 - **Lock an app** — the padlock keeps it running through a Quit all.
-- **Idle rules** — give an app 1 to 24 hours; Poof closes it once it has sat unused that long.
-  The chip on the row fills up as the deadline approaches.
+- **Idle rules** — give an app anything from 1 minute to 24 hours; Poof closes it once it has
+  sat unused that long. The chip on the row fills up as the deadline approaches.
 - **Force quit** — optional, for apps that stall on an unsaved-changes dialog. Off by default.
 - **Updates itself** — checks GitHub every six hours, downloads the new build, verifies its
   signature, swaps the bundle and restarts.

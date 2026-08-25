@@ -55,10 +55,10 @@ class UsageTracker {
     const keep = this.settings.get('keep');
 
     return apps.filter((app) => {
-      const hours = Number(rules[app.id]);
-      if (!hours || keep.includes(app.id) || app.front) return false;
+      const minutes = Number(rules[app.id]);
+      if (!minutes || keep.includes(app.id) || app.front) return false;
       if (this.quitting.has(app.id)) return false;
-      return this.idleFor(app, lastUsed) >= hours * 3600 * 1000;
+      return this.idleFor(app, lastUsed) >= minutes * 60 * 1000;
     });
   }
 

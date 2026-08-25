@@ -18,13 +18,19 @@ const LOCK_OPEN = '<path d="M5.2 7V4.9a2.8 2.8 0 0 1 5.4-1"/><rect x="3.4" y="7"
 
 let apps = [];
 
-const hoursLabel = (hours) => (hours ? `${hours}h` : '—');
-
-function idleLabel(ms) {
-  const minutes = Math.floor(ms / 60000);
-  if (minutes < 60) return `idle ${minutes}m`;
-  return `idle ${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+// Minutes below an hour, whole hours above it, and h+m only when both matter.
+function duration(minutes) {
+  if (!minutes) return '—';
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours}h ${rest}m` : `${hours}h`;
 }
+
+const idleLabel = (ms) => `idle ${duration(Math.floor(ms / 60000)) || '0m'}`;
+
+const MINUTE_STEPS = [1, 2, 5, 10, 15, 20, 30, 45];
+const HOUR_STEPS = [1, 2, 3, 4, 6, 8, 10, 12, 16, 18, 20, 24];
 
 function setStatus(text) {
   statusLine.textContent = text || '';
@@ -70,31 +76,43 @@ function buildRow(app) {
   row.append(name);
 
   const timer = document.createElement('span');
-  timer.className = app.hours ? 'timer armed' : 'timer';
+  timer.className = app.minutes ? 'timer armed' : 'timer';
 
   const chip = document.createElement('span');
   chip.className = 'chip';
   chip.style.setProperty('--fill', `${Math.round(app.progress * 100)}%`);
   const chipLabel = document.createElement('span');
-  chipLabel.textContent = hoursLabel(app.hours);
+  chipLabel.textContent = duration(app.minutes);
   chip.append(chipLabel);
   timer.append(chip);
 
   const select = document.createElement('select');
-  select.title = app.hours
-    ? `Quit after ${app.hours}h unused · ${idleLabel(app.idleMs)}`
-    : 'Quit this app after it sits unused';
-  const off = new Option('Never quit on its own', '0', !app.hours, !app.hours);
-  select.append(off);
-  for (let h = 1; h <= 24; h++) {
-    select.append(new Option(`Quit after ${h}h unused`, String(h), app.hours === h, app.hours === h));
+  select.title = app.minutes
+    ? `Quits after ${duration(app.minutes)} unused · ${idleLabel(app.idleMs)}`
+    : 'Quit this app once it sits unused';
+
+  select.append(new Option('Never quit on its own', '0', !app.minutes, !app.minutes));
+
+  const groups = [
+    ['Minutes', MINUTE_STEPS],
+    ['Hours', HOUR_STEPS.map((h) => h * 60)],
+  ];
+  for (const [label, steps] of groups) {
+    const group = document.createElement('optgroup');
+    group.label = label;
+    for (const minutes of steps) {
+      const selected = app.minutes === minutes;
+      group.append(new Option(`Quit after ${duration(minutes)} unused`, String(minutes), selected, selected));
+    }
+    select.append(group);
   }
+
   select.addEventListener('change', async () => {
-    const hours = Number(select.value);
-    await window.poof.setRule(app.id, hours);
-    app.hours = hours;
-    // A kept app never quits, so an idle rule would be a promise Poof can't keep.
-    if (hours && app.keep) {
+    const minutes = Number(select.value);
+    await window.poof.setRule(app.id, minutes);
+    app.minutes = minutes;
+    // A locked app never quits, so an idle rule would be a promise Poof can't keep.
+    if (minutes && app.keep) {
       await window.poof.toggleKeep(app.id);
       app.keep = false;
     }
@@ -110,9 +128,9 @@ function buildRow(app) {
   pin.addEventListener('click', async () => {
     const keep = await window.poof.toggleKeep(app.id);
     app.keep = keep.includes(app.id);
-    if (app.keep && app.hours) {
+    if (app.keep && app.minutes) {
       await window.poof.setRule(app.id, 0);
-      app.hours = 0;
+      app.minutes = 0;
     }
     render();
   });

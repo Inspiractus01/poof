@@ -26,15 +26,15 @@ async function collect() {
   const lastUsed = settings.get('lastUsed');
 
   return apps.map((entry) => {
-    const hours = Number(rules[entry.id]) || 0;
+    const minutes = Number(rules[entry.id]) || 0;
     const idleMs = lastUsed[entry.id] ? Date.now() - lastUsed[entry.id] : 0;
     return {
       ...entry,
       keep: keep.includes(entry.id),
-      hours,
+      minutes,
       idleMs,
       // How far this app has drifted toward its own deadline, 0..1.
-      progress: hours ? Math.min(1, idleMs / (hours * 3600 * 1000)) : 0,
+      progress: minutes ? Math.min(1, idleMs / (minutes * 60 * 1000)) : 0,
     };
   });
 }
@@ -165,9 +165,9 @@ ipcMain.handle('keep:toggle', (_event, id) => {
   return next;
 });
 
-ipcMain.handle('rule:set', (_event, id, hours) => {
+ipcMain.handle('rule:set', (_event, id, minutes) => {
   const rules = { ...settings.get('rules') };
-  if (hours) rules[id] = hours;
+  if (minutes) rules[id] = minutes;
   else delete rules[id];
   settings.set({ rules });
   return rules;
@@ -209,7 +209,7 @@ async function probe() {
     console.log(JSON.stringify({
       ms: Date.now() - started,
       count: apps.length,
-      apps: apps.map((a) => ({ name: a.name, icon: Boolean(a.icon), hours: a.hours, keep: a.keep })),
+      apps: apps.map((a) => ({ name: a.name, icon: Boolean(a.icon), minutes: a.minutes, keep: a.keep })),
     }, null, 2));
   } catch (err) {
     console.log(JSON.stringify({
