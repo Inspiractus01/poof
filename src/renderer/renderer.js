@@ -29,8 +29,7 @@ function duration(minutes) {
 
 const idleLabel = (ms) => `idle ${duration(Math.floor(ms / 60000)) || '0m'}`;
 
-const MINUTE_STEPS = [1, 2, 5, 10, 15, 20, 30, 45];
-const HOUR_STEPS = [1, 2, 3, 4, 6, 8, 10, 12, 16, 18, 20, 24];
+const HOUR_STEPS = Array.from({ length: 24 }, (_, i) => i + 1);
 
 function setStatus(text) {
   statusLine.textContent = text || '';
@@ -93,18 +92,13 @@ function buildRow(app) {
 
   select.append(new Option('Never quit on its own', '0', !app.minutes, !app.minutes));
 
-  const groups = [
-    ['Minutes', MINUTE_STEPS],
-    ['Hours', HOUR_STEPS.map((h) => h * 60)],
-  ];
-  for (const [label, steps] of groups) {
-    const group = document.createElement('optgroup');
-    group.label = label;
-    for (const minutes of steps) {
-      const selected = app.minutes === minutes;
-      group.append(new Option(`Quit after ${duration(minutes)} unused`, String(minutes), selected, selected));
-    }
-    select.append(group);
+  // A rule set before the picker went back to whole hours still has to show up.
+  const steps = HOUR_STEPS.map((h) => h * 60);
+  if (app.minutes && !steps.includes(app.minutes)) steps.unshift(app.minutes);
+
+  for (const minutes of steps) {
+    const selected = app.minutes === minutes;
+    select.append(new Option(`Quit after ${duration(minutes)} unused`, String(minutes), selected, selected));
   }
 
   select.addEventListener('change', async () => {
